@@ -7,6 +7,8 @@ package org.jetbrains.kotlin.gradle.testbase
 
 import org.gradle.testkit.runner.BuildResult
 import java.nio.file.Path
+import kotlin.io.path.relativeTo
+import kotlin.test.assertEquals
 
 /**
  * Asserts Gradle output contains [expectedSubString] string.
