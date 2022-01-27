@@ -31,7 +31,6 @@ import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.plugins.PluginCliParser
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
-import org.jetbrains.kotlin.config.IncrementalCompilation
 import org.jetbrains.kotlin.config.Services
 import org.jetbrains.kotlin.incremental.components.ExpectActualTracker
 import org.jetbrains.kotlin.incremental.components.LookupTracker
@@ -40,7 +39,7 @@ import org.jetbrains.kotlin.incremental.js.IncrementalNextRoundChecker
 import org.jetbrains.kotlin.incremental.js.IncrementalResultsConsumer
 import org.jetbrains.kotlin.ir.backend.js.*
 import org.jetbrains.kotlin.ir.backend.js.codegen.JsGenerationGranularity
-import org.jetbrains.kotlin.ir.backend.js.ic.actualizeCacheForModule
+import org.jetbrains.kotlin.ir.backend.js.ic.actualizeCaches
 import org.jetbrains.kotlin.ir.backend.js.ic.buildCacheForModuleFiles
 import org.jetbrains.kotlin.ir.backend.js.ic.loadModuleCaches
 import org.jetbrains.kotlin.ir.backend.js.transformers.irToJs.IrModuleToJsTransformer
@@ -196,9 +195,9 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
         // TODO: Handle non-empty main call arguments
         val mainCallArguments = if (K2JsArgumentConstants.NO_CALL == arguments.main) null else emptyList<String>()
 
-        val icCaches = configureLibraries(arguments.cacheDirectories)
+        val cacheDirectories = configureLibraries(arguments.cacheDirectories)
 
-        if (arguments.irBuildCache) {
+        val icCaches = if (cacheDirectories.isNotEmpty()) {
             messageCollector.report(INFO, "")
             messageCollector.report(INFO, "Building cache:")
             messageCollector.report(INFO, "to: ${outputFilePath}")
@@ -209,24 +208,22 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
 
             val start = System.currentTimeMillis()
 
-            val updateStatus = actualizeCacheForModule(
+            actualizeCaches(
                 includes,
-                outputFilePath,
                 configurationJs,
                 libraries,
-                icCaches,
+                cacheDirectories,
                 IrFactoryImplForJsIC(WholeWorldStageController()),
                 mainCallArguments,
-                ::buildCacheForModuleFiles
-            )
-
-            if (updateStatus.upToDate) {
-                messageCollector.report(INFO, "IC per-file cache up-to-date check duration: ${System.currentTimeMillis() - start}ms")
-            } else {
-                messageCollector.report(INFO, "IC per-file cache building duration: ${System.currentTimeMillis() - start}ms")
+                ::buildCacheForModuleFiles,
+            ) { updateStatus ->
+                if (updateStatus.upToDate) {
+                    messageCollector.report(INFO, "IC per-file cache up-to-date check duration: ${System.currentTimeMillis() - start}ms")
+                } else {
+                    messageCollector.report(INFO, "IC per-file cache building duration: ${System.currentTimeMillis() - start}ms")
+                }
             }
-            return OK
-        }
+        } else emptyList()
 
         // Run analysis if main module is sources
         lateinit var sourceModule: ModulesStructure
