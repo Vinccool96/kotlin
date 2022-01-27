@@ -55,10 +55,6 @@ fun compileToLoweredIr(
         ExternalDependenciesGenerator(symbolTable, listOf(deserializer)).generateUnboundSymbolsAsDependencies()
     }
 
-    val irFiles = allModules.flatMap { it.files }
-    moduleFragment.files.clear()
-    moduleFragment.files += irFiles
-
     // Create stubs
     ExternalDependenciesGenerator(symbolTable, listOf(deserializer)).generateUnboundSymbolsAsDependencies()
     moduleFragment.patchDeclarationParents()
@@ -66,9 +62,11 @@ fun compileToLoweredIr(
     deserializer.postProcess()
     symbolTable.noUnboundLeft("Unbound symbols at the end of linker")
 
-    moduleFragment.files.forEach { irFile -> markExportedDeclarations(context, irFile, exportedDeclarations) }
+    for (module in allModules)
+        for (file in module.files)
+            markExportedDeclarations(context, file, exportedDeclarations)
 
-    wasmPhases.invokeToplevel(phaseConfig, context, moduleFragment)
+    wasmPhases.invokeToplevel(phaseConfig, context, allModules)
 
     return Pair(moduleFragment, context)
 }
@@ -86,7 +84,7 @@ fun compileWasm(
 
     val compiledWasmModule = WasmCompiledModuleFragment(backendContext.irBuiltIns)
     val codeGenerator = WasmModuleFragmentGenerator(backendContext, compiledWasmModule, allowIncompleteImplementations = dceEnabled)
-    codeGenerator.generateModule(moduleFragment)
+    allModules.forEach { codeGenerator.generateModule(it) }
 
     val linkedModule = compiledWasmModule.linkWasmCompiledFragments()
     val watGenerator = WasmIrToText()
