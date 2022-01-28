@@ -101,7 +101,7 @@ public:
         heapGrowthController_(config),
         regularIntervalPacer_(config, currentTimeProvider),
         scheduleGC_(std::move(scheduleGC)),
-        timer_(config_.regularGcInterval(), [this]() {
+        timer_("GC Timer thread", config_.regularGcInterval(), [this]() {
             if (regularIntervalPacer_.NeedsGC()) {
                 scheduleGC_();
             }
