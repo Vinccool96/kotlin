@@ -23,6 +23,7 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
 import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.util.OperatorNameConventions
 import org.jetbrains.kotlin.util.collectionUtils.filterIsInstanceAnd
+import org.jetbrains.kotlin.utils.PathUtil
 import org.jetbrains.kotlin.utils.getOrPutNullable
 import org.jetbrains.kotlinx.serialization.compiler.backend.common.*
 import org.jetbrains.kotlinx.serialization.compiler.diagnostic.serializableAnnotationIsUseless
@@ -137,7 +138,14 @@ class SerializableIrGenerator(
                 // Assign this.a = a in else branch
                 // Set field directly w/o setter to match behavior of old backend plugin
                 val backingFieldToAssign = prop.getIrPropertyFrom(irClass).backingField!!
-                val assignParamExpr = irSetField(irGet(thiz), backingFieldToAssign, irGet(paramRef))
+                val assignParamExpr = try {
+                    irSetField(irGet(thiz), backingFieldToAssign, irGet(paramRef))
+                } catch (e: NoSuchMethodError) {
+                    System.err.println("NoSuchMethodError from kotlinx.serialization")
+                    System.err.println("Serialization plugin path: " + PathUtil.getResourcePathForClass(SerializableIrGenerator::class.java).absolutePath)
+                    System.err.println("Serialization plugin path 2: " + PathUtil.getResourcePathForClass(javaClass).absolutePath)
+                    throw e
+                }
 
                 val ifNotSeenExpr: IrExpression = if (prop.optional) {
                     val initializerBody =

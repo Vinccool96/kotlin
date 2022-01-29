@@ -179,6 +179,8 @@ abstract class CLICompiler<A : CommonCompilerArguments> : CLITool<A>() {
         } else {
             pluginOptions.add("plugin:kotlin.scripting:disable=true")
         }
+        pluginClasspaths.forEach { System.err.println("Plugin classpath: $it") }
+        pluginOptions.forEach { System.err.println("Plugin option: $it") }
         return PluginCliParser.loadPluginsSafe(pluginClasspaths, pluginOptions, configuration)
     }
 

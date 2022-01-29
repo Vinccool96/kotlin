@@ -178,6 +178,11 @@ class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
                 MessageUtil.psiElementToMessageLocation(e.element)
             )
             return INTERNAL_ERROR
+        } catch (e: LinkageError) {
+            System.err.println("Linkage error: $e")
+            arguments.pluginClasspaths.orEmpty().forEach { System.err.println("Compiler plugin: $it") }
+            arguments.classpath.orEmpty().forEach { System.err.println("Classpath: $it") }
+            throw e
         }
     }
 
