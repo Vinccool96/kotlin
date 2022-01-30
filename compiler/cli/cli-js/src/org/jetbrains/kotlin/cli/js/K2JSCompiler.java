@@ -189,7 +189,7 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
             return COMPILATION_ERROR;
         }
 
-        ExitCode pluginLoadResult = loadPlugins(paths, arguments, configuration);
+        ExitCode pluginLoadResult = loadPlugins(paths, arguments, configuration, messageCollector);
         if (pluginLoadResult != ExitCode.OK) return pluginLoadResult;
 
         configuration.put(JSConfigurationKeys.LIBRARIES, configureLibraries(arguments, paths, messageCollector));

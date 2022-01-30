@@ -68,7 +68,7 @@ class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
 
         configuration.put(JVMConfigurationKeys.DISABLE_STANDARD_SCRIPT_DEFINITION, arguments.disableStandardScript)
 
-        val pluginLoadResult = loadPlugins(paths, arguments, configuration)
+        val pluginLoadResult = loadPlugins(paths, arguments, configuration, messageCollector)
         if (pluginLoadResult != ExitCode.OK) return pluginLoadResult
 
         val moduleName = arguments.moduleName ?: JvmProtoBufUtil.DEFAULT_MODULE_NAME
@@ -179,9 +179,9 @@ class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
             )
             return INTERNAL_ERROR
         } catch (e: LinkageError) {
-            System.err.println("Linkage error: $e")
-            arguments.pluginClasspaths.orEmpty().forEach { System.err.println("Compiler plugin: $it") }
-            arguments.classpath.orEmpty().forEach { System.err.println("Classpath: $it") }
+            messageCollector.report(ERROR, "Linkage error: $e")
+            messageCollector.report(ERROR, "Compiler plugins: " + arguments.pluginClasspaths.orEmpty().joinToString(":"))
+            messageCollector.report(ERROR, "Classpath: " +  arguments.classpath.orEmpty())
             throw e
         }
     }

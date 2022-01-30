@@ -93,7 +93,7 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
     ): ExitCode {
         val messageCollector = configuration.getNotNull(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY)
 
-        val pluginLoadResult = loadPlugins(paths, arguments, configuration)
+        val pluginLoadResult = loadPlugins(paths, arguments, configuration, messageCollector)
         if (pluginLoadResult != ExitCode.OK) return pluginLoadResult
 
         //TODO: add to configuration everything that may come in handy at script compiler and use it there
