@@ -120,7 +120,7 @@ abstract class CLITool<A : CommonToolArguments> {
     private fun <A : CommonToolArguments> printVersionIfNeeded(messageCollector: MessageCollector, arguments: A) {
         if (arguments.version) {
             val jreVersion = System.getProperty("java.runtime.version")
-            messageCollector.report(INFO, "${executableScriptFileName()} ${KotlinCompilerVersion.VERSION} (JRE $jreVersion)")
+            messageCollector.report(INFO, "booboo ${executableScriptFileName()} ${KotlinCompilerVersion.VERSION} (JRE $jreVersion)")
         }
     }
 
