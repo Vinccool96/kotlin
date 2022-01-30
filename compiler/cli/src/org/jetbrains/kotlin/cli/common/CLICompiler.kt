@@ -168,7 +168,6 @@ abstract class CLICompiler<A : CommonCompilerArguments> : CLITool<A>() {
                 if (missingJars.isEmpty()) {
                     pluginClasspaths = jars.map { it.canonicalPath } + pluginClasspaths
                 } else {
-                    val messageCollector = configuration.getNotNull(MESSAGE_COLLECTOR_KEY)
                     messageCollector.report(
                         CompilerMessageSeverity.LOGGING,
                         "Scripting plugin will not be loaded: not all required jars are present in the classpath (missing files: $missingJars)"
