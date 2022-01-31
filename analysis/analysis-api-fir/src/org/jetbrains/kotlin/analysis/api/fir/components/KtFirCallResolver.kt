@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.analysis.api.calls.*
 import org.jetbrains.kotlin.analysis.api.diagnostics.KtNonBoundToPsiErrorDiagnostic
 import org.jetbrains.kotlin.analysis.api.fir.KtFirAnalysisSession
 import org.jetbrains.kotlin.analysis.api.fir.getCandidateSymbols
+import org.jetbrains.kotlin.analysis.api.fir.isInvokeFunction
 import org.jetbrains.kotlin.analysis.api.fir.symbols.KtFirArrayOfSymbolProvider.arrayOf
 import org.jetbrains.kotlin.analysis.api.fir.symbols.KtFirArrayOfSymbolProvider.arrayOfSymbol
 import org.jetbrains.kotlin.analysis.api.fir.symbols.KtFirArrayOfSymbolProvider.arrayTypeToArrayOfCall
@@ -30,6 +31,8 @@ import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.expressions.*
+import org.jetbrains.kotlin.fir.expressions.builder.buildFunctionCall
+import org.jetbrains.kotlin.fir.expressions.impl.FirNoReceiverExpression
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.references.FirNamedReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
@@ -39,6 +42,7 @@ import org.jetbrains.kotlin.fir.resolve.calls.AbstractCandidate
 import org.jetbrains.kotlin.fir.resolve.calls.Candidate
 import org.jetbrains.kotlin.fir.resolve.calls.ResolutionContext
 import org.jetbrains.kotlin.fir.resolve.createConeDiagnosticForCandidateWithError
+import org.jetbrains.kotlin.fir.resolve.dfa.unwrapSmartcastExpression
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeDiagnosticWithCandidates
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeHiddenCandidateError
 import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
@@ -53,8 +57,10 @@ import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.KtPsiUtil.deparenthesize
+import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
 import org.jetbrains.kotlin.toKtPsiSourceElement
 import org.jetbrains.kotlin.util.OperatorNameConventions
 import org.jetbrains.kotlin.util.OperatorNameConventions.EQUALS
@@ -256,59 +262,88 @@ internal class KtFirCallResolver(
         handleCompoundAccessCall(psi, fir, resolveFragmentOfCall)?.let { return it }
 
         var firstArgIsExtensionReceiver = false
+        var isImplicitInvoke = false
 
-        val partiallyAppliedSymbol = if (candidate != null) {
-            // TODO: Ideally, we should get the substitutor from the candidate. But it seems there is no way to get the substitutor from the
-            //  candidate, `Candidate.substitutor` is not complete. maybe we can carry over the final substitutor if it's available from
-            //  body resolve phase?
-            val substitutor =
-                (fir as? FirQualifiedAccess)?.createSubstitutorFromTypeArguments(targetSymbol) ?: KtSubstitutor.Empty(token)
-            KtPartiallyAppliedSymbol(
-                unsubstitutedKtSignature.substitute(substitutor),
-                candidate.dispatchReceiverValue?.receiverExpression?.toKtReceiverValue(),
-                candidate.extensionReceiverValue?.receiverExpression?.toKtReceiverValue(),
-            )
-        } else if (fir is FirQualifiedAccess) {
-            val dispatchReceiver: KtReceiverValue?
-            val extensionReceiver: KtReceiverValue?
-            if (fir is FirImplicitInvokeCall) {
-                val explicitReceiverPsi = when (psi) {
-                    is KtQualifiedExpression -> (psi.selectorExpression as KtCallExpression).calleeExpression
-                    is KtCallExpression -> psi.calleeExpression
-                    else -> error("unexpected PSI $psi for FirImplicitInvokeCall")
-                } ?: error("missing calleeExpression in PSI $psi for FirImplicitInvokeCall")
-                // For implicit invoke, the explicit receiver is always set in FIR and this receiver is the variable or property that has
-                // the `invoke` member function. In this case, we use the `calleeExpression` in the `KtCallExpression` as the PSI
-                // representation of this receiver. Caller can then use this PSI for further call resolution, which is implemented by the
-                // parameter `resolveCalleeExpressionOfFunctionCall` in `toKtCallInfo`.
-                val explicitReceiver = KtExplicitReceiverValue(explicitReceiverPsi, false, token)
+        // TODO: Ideally, we should get the substitutor from the candidate. But it seems there is no way to get the substitutor from the
+        //  candidate, `Candidate.substitutor` is not complete. maybe we can carry over the final substitutor if it's available from
+        //  body resolve phase?
+        val substitutor =
+            (fir as? FirQualifiedAccess)?.createSubstitutorFromTypeArguments(targetSymbol) ?: KtSubstitutor.Empty(token)
 
-                // Specially handle @ExtensionFunctionType
-                if (fir.dispatchReceiver.typeRef.coneTypeSafe<ConeKotlinType>()?.isExtensionFunctionType == true) {
-                    firstArgIsExtensionReceiver = true
-                }
+        fun createKtPartiallyAppliedSymbolForImplicitInvoke(
+            dispatchReceiver: FirExpression,
+            extensionReceiver: FirExpression,
+            explicitReceiverKind: ExplicitReceiverKind
+        ): KtPartiallyAppliedSymbol<KtCallableSymbol, KtSignature<KtCallableSymbol>> {
+            isImplicitInvoke = true
+            val explicitReceiverPsi = when (psi) {
+                is KtQualifiedExpression -> (psi.selectorExpression as KtCallExpression).calleeExpression
+                is KtCallExpression -> psi.calleeExpression
+                else -> error("unexpected PSI $psi for FirImplicitInvokeCall")
+            } ?: error("missing calleeExpression in PSI $psi for FirImplicitInvokeCall")
+            // For implicit invoke, the explicit receiver is always set in FIR and this receiver is the variable or property that has
+            // the `invoke` member function. In this case, we use the `calleeExpression` in the `KtCallExpression` as the PSI
+            // representation of this receiver. Caller can then use this PSI for further call resolution, which is implemented by the
+            // parameter `resolveCalleeExpressionOfFunctionCall` in `toKtCallInfo`.
+            val explicitReceiverValue = KtExplicitReceiverValue(explicitReceiverPsi, false, token)
 
-                if (fir.explicitReceiver == fir.dispatchReceiver) {
-                    dispatchReceiver = explicitReceiver
-                    if (firstArgIsExtensionReceiver) {
-                        extensionReceiver = fir.arguments.first().toKtReceiverValue()
-                    } else {
-                        extensionReceiver = fir.extensionReceiver.toKtReceiverValue()
-                    }
+            // Specially handle @ExtensionFunctionType
+            if (dispatchReceiver.typeRef.coneTypeSafe<ConeKotlinType>()?.isExtensionFunctionType == true) {
+                firstArgIsExtensionReceiver = true
+            }
+
+            val dispatchReceiverValue: KtReceiverValue?
+            val extensionReceiverValue: KtReceiverValue?
+            if (explicitReceiverKind == ExplicitReceiverKind.DISPATCH_RECEIVER) {
+                dispatchReceiverValue = explicitReceiverValue
+                if (firstArgIsExtensionReceiver) {
+                    extensionReceiverValue = (fir as FirFunctionCall).arguments.first().toKtReceiverValue()
                 } else {
-                    dispatchReceiver = fir.dispatchReceiver.toKtReceiverValue()
-                    extensionReceiver = explicitReceiver
+                    extensionReceiverValue = extensionReceiver.toKtReceiverValue()
                 }
             } else {
-                dispatchReceiver = fir.dispatchReceiver.toKtReceiverValue()
-                extensionReceiver = fir.extensionReceiver.toKtReceiverValue()
+                dispatchReceiverValue = dispatchReceiver.toKtReceiverValue()
+                extensionReceiverValue = explicitReceiverValue
             }
-            val substitutor = fir.createConeSubstitutorFromTypeArguments() ?: return null
-            KtPartiallyAppliedSymbol(
-                unsubstitutedKtSignature.substitute(substitutor.toKtSubstitutor()),
-                dispatchReceiver,
-                extensionReceiver,
+            return KtPartiallyAppliedSymbol(
+                unsubstitutedKtSignature.substitute(substitutor),
+                dispatchReceiverValue,
+                extensionReceiverValue,
             )
+        }
+
+        val partiallyAppliedSymbol = if (candidate != null) {
+            if (fir is FirImplicitInvokeCall ||
+                (fir.calleeOrCandidateName != OperatorNameConventions.INVOKE && targetSymbol.isInvokeFunction())
+            ) {
+                // Implicit invoke (e.g., `x()`) will have a different callee symbol (e.g., `x`) than the candidate (e.g., `invoke`).
+                createKtPartiallyAppliedSymbolForImplicitInvoke(
+                    candidate.dispatchReceiverValue?.receiverExpression ?: FirNoReceiverExpression,
+                    candidate.extensionReceiverValue?.receiverExpression ?: FirNoReceiverExpression,
+                    candidate.explicitReceiverKind
+                )
+            } else {
+                KtPartiallyAppliedSymbol(
+                    unsubstitutedKtSignature.substitute(substitutor),
+                    candidate.dispatchReceiverValue?.receiverExpression?.toKtReceiverValue(),
+                    candidate.extensionReceiverValue?.receiverExpression?.toKtReceiverValue(),
+                )
+            }
+        } else if (fir is FirQualifiedAccess) {
+            if (fir is FirImplicitInvokeCall) {
+                val explicitReceiverKind = if (fir.explicitReceiver == fir.dispatchReceiver) {
+                    ExplicitReceiverKind.DISPATCH_RECEIVER
+                } else {
+                    ExplicitReceiverKind.EXTENSION_RECEIVER
+                }
+                createKtPartiallyAppliedSymbolForImplicitInvoke(fir.dispatchReceiver, fir.extensionReceiver, explicitReceiverKind)
+            } else {
+                KtPartiallyAppliedSymbol(
+                    unsubstitutedKtSignature.substitute(substitutor),
+                    fir.dispatchReceiver.toKtReceiverValue(),
+                    fir.extensionReceiver.toKtReceiverValue()
+                )
+            }
         } else {
             KtPartiallyAppliedSymbol(unsubstitutedKtSignature, null, null)
         }
@@ -367,7 +402,7 @@ internal class KtFirCallResolver(
                     argumentMappingWithoutExtensionReceiver
                         ?.createArgumentMapping(partiallyAppliedSymbol.signature as KtFunctionLikeSignature<*>)
                         ?: LinkedHashMap(),
-                    fir is FirImplicitInvokeCall
+                    isImplicitInvoke
                 )
             }
             is FirExpressionWithSmartcast -> createKtCall(psi, fir.originalExpression, candidate, resolveFragmentOfCall)
@@ -676,19 +711,39 @@ internal class KtFirCallResolver(
 
         @OptIn(PrivateForInline::class)
         fun getAllCandidates(functionCall: FirFunctionCall, element: KtElement): List<KtCallInfo> {
+            // Set up needed context to get all candidates.
             val towerContext = firResolveState.getTowerContextProvider().getClosestAvailableParentContext(element)
             towerContext?.let { bodyResolveComponents.context.replaceTowerDataContext(it) }
-            // Note: All candidate symbols should have the same name
-            val name =
-                functionCall.calleeReference.getCandidateSymbols().firstOrNull()?.safeAs<FirFunctionSymbol<*>>()?.name ?: return emptyList()
+            bodyResolveComponents.context.containers.addAll(element.getContainingDeclarations())
+
+            // If a function call is resolved to an implicit invoke call, the FirImplicitInvokeCall will have the `invoke()` function as the
+            // callee and the variable as the explicit receiver. To correctly get all candidates, we need to get the original function
+            // call's explicit receiver (if there is any) and callee (i.e., the variable).
+            val unwrappedExplicitReceiver = functionCall.explicitReceiver?.unwrapSmartcastExpression()
+            val originalFunctionCall =
+                if (functionCall is FirImplicitInvokeCall && unwrappedExplicitReceiver is FirPropertyAccessExpression) {
+                    val originalCallee = unwrappedExplicitReceiver.calleeReference.safeAs<FirNamedReference>() ?: return emptyList()
+                    buildFunctionCall {
+                        source = functionCall.source
+                        annotations.addAll(functionCall.annotations)
+                        typeArguments.addAll(functionCall.typeArguments)
+                        explicitReceiver = unwrappedExplicitReceiver.explicitReceiver
+                        argumentList = functionCall.argumentList
+                        calleeReference = originalCallee
+                    }
+                } else {
+                    functionCall
+                }
+
+            val calleeName = originalFunctionCall.calleeOrCandidateName ?: return emptyList()
             return bodyResolveComponents.context.withFile(firFile, bodyResolveComponents) {
                 val candidates = bodyResolveComponents.callResolver.collectAllCandidates(
-                    functionCall,
-                    name,
-                    element.getContainingDeclarations(),
+                    originalFunctionCall,
+                    calleeName,
+                    bodyResolveComponents.context.containers,
                     resolutionContext
                 )
-                candidates.mapNotNull { convertToKtCallInfo(functionCall, element, it.candidate, it.isInBestCandidates) }
+                candidates.mapNotNull { convertToKtCallInfo(originalFunctionCall, element, it.candidate, it.isInBestCandidates) }
             }
         }
 
@@ -739,6 +794,34 @@ internal class KtFirCallResolver(
             }
         }
     }
+
+    private val FirResolvable.calleeOrCandidateName: Name?
+        get() {
+            val calleeReference = calleeReference
+            if (calleeReference !is FirNamedReference) return null
+
+            // In most cases, we can get the callee name from the callee's candidate symbols. However, there is at least one case where we
+            // cannot do so:
+            // ```
+            // fun x(c: Char) {}
+            // fun call(x: kotlin.Int) {
+            //   operator fun Int.invoke(a: Int) {}
+            //   operator fun Int.invoke(b: Boolean) {}
+            //   <expr>x()</expr>
+            // }
+            // ```
+            // The candidates for the call will both be `invoke`. We can keep it simple by getting the name from the callee reference's PSI
+            // element (`x` in the above example) if possible.
+            return when (val psi = calleeReference.psi) {
+                is KtNameReferenceExpression -> psi.getReferencedNameAsName()
+                else -> {
+                    // This could be KtArrayAccessExpression or KtOperationReferenceExpression.
+                    // Note: All candidate symbols should have the same name. We go by the symbol because `originalCallee.name` will include
+                    // the applicability if not successful.
+                    calleeReference.getCandidateSymbols().firstOrNull()?.safeAs<FirCallableSymbol<*>>()?.name
+                }
+            }
+        }
 
     private fun FirArrayOfCall.toKtCallInfo(): KtCallInfo? {
         val arrayOfSymbol = with(analysisSession) {
