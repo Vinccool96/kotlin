@@ -7,7 +7,9 @@
 
 #ifndef KONAN_NO_THREADS
 
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include <string_view>
 #include <thread>
 

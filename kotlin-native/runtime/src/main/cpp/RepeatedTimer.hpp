@@ -3,8 +3,9 @@
  * that can be found in the LICENSE file.
  */
 
-#ifndef RUNTIME_REPEATED_TIMER_H
-#define RUNTIME_REPEATED_TIMER_H
+#pragma once
+
+#ifndef KONAN_NO_THREADS
 
 #include <chrono>
 #include <condition_variable>
@@ -60,4 +61,4 @@ private:
 
 } // namespace kotlin
 
-#endif // RUNTIME_REPEATED_TIMER_H
+#endif // !KONAN_NO_THREADS
