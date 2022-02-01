@@ -3076,6 +3076,11 @@ public class LazyBodyIsNotTouchedTilContractsPhaseTestGenerated extends Abstract
             runTest("compiler/fir/analysis-tests/testData/resolve/samConversions/samWithEquals.kt");
         }
 
+        @TestMetadata("samWithSuspendFunctionFromAnotherModule.kt")
+        public void testSamWithSuspendFunctionFromAnotherModule() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/samConversions/samWithSuspendFunctionFromAnotherModule.kt");
+        }
+
         @TestMetadata("simple.kt")
         public void testSimple() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/samConversions/simple.kt");

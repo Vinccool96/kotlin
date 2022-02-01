@@ -1,0 +1,18 @@
+Module: lib
+FILE: module_lib_samWithSuspendFunctionFromAnotherModule.kt
+    public abstract fun interface A : R|kotlin/Any| {
+        public abstract suspend fun foo(): R|kotlin/Unit|
+
+    }
+Module: main
+FILE: module_main_samWithSuspendFunctionFromAnotherModule.kt
+    public final suspend fun bar(): R|kotlin/Unit| {
+    }
+    public final fun takeA(a: R|A?|): R|kotlin/Unit| {
+    }
+    public final fun test(): R|kotlin/Unit| {
+        R|/takeA|(<L> = takeA@fun <anonymous>(): R|kotlin/Unit| <inline=NoInline>  {
+            R|/bar|()
+        }
+        )
+    }

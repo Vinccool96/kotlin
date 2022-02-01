@@ -3482,6 +3482,12 @@ public class DiagnosisCompilerFirTestdataTestGenerated extends AbstractDiagnosis
             }
 
             @Test
+            @TestMetadata("samWithSuspendFunctionFromAnotherModule.kt")
+            public void testSamWithSuspendFunctionFromAnotherModule() throws Exception {
+                runTest("compiler/fir/analysis-tests/testData/resolve/samConversions/samWithSuspendFunctionFromAnotherModule.kt");
+            }
+
+            @Test
             @TestMetadata("simple.kt")
             public void testSimple() throws Exception {
                 runTest("compiler/fir/analysis-tests/testData/resolve/samConversions/simple.kt");
