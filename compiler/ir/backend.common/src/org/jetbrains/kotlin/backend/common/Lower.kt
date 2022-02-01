@@ -96,8 +96,23 @@ private class ClassLoweringVisitor(
     }
 
     override fun visitClass(declaration: IrClass) {
-        declaration.acceptChildrenVoid(this)
+        declaration.declarations.forEach { it.acceptVoid(this) }
         loweringPass.lower(declaration)
+    }
+
+    override fun visitSimpleFunction(declaration: IrSimpleFunction) {
+        // Fake override function can't have default parameter values and/or body, and thus can't have local classes
+        if (declaration.isFakeOverride) return
+        visitClassesInFunction(declaration)
+    }
+
+    override fun visitConstructor(declaration: IrConstructor) {
+        visitClassesInFunction(declaration)
+    }
+
+    private fun visitClassesInFunction(declaration: IrFunction) {
+        declaration.valueParameters.forEach { it.defaultValue?.acceptChildrenVoid(this) }
+        declaration.body?.acceptVoid(this)
     }
 }
 
@@ -177,9 +192,25 @@ private open class BodyLoweringVisitor(
     }
 
     override fun visitClass(declaration: IrClass, data: IrDeclaration?) {
-        declaration.thisReceiver?.accept(this, declaration)
         declaration.typeParameters.forEach { it.accept(this, declaration) }
         ArrayList(declaration.declarations).forEach { it.accept(this, declaration) }
+    }
+
+    override fun visitSimpleFunction(declaration: IrSimpleFunction, data: IrDeclaration?) {
+        // Fake override function can't have default parameter values and/or body
+        if (declaration.isFakeOverride) return
+        visitBodiesInFunction(declaration)
+    }
+
+    override fun visitConstructor(declaration: IrConstructor, data: IrDeclaration?) {
+        visitBodiesInFunction(declaration)
+    }
+
+    private fun visitBodiesInFunction(declaration: IrFunction) {
+        declaration.valueParameters.forEach { valueParameter ->
+            valueParameter.defaultValue?.let { visitBody(it, declaration) }
+        }
+        declaration.body?.let { visitBody(it, declaration) }
     }
 
     override fun visitBody(body: IrBody, data: IrDeclaration?) {
