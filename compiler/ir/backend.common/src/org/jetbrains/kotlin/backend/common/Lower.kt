@@ -43,6 +43,16 @@ interface ClassLoweringPass : FileLoweringPass {
     override fun lower(irFile: IrFile) = runOnFilePostfix(irFile)
 }
 
+class CompositeClassLoweringPass(
+    private vararg val passes: ClassLoweringPass
+) : ClassLoweringPass {
+    override fun lower(irClass: IrClass) {
+        for (pass in passes) {
+            pass.lower(irClass)
+        }
+    }
+}
+
 interface ScriptLoweringPass : FileLoweringPass {
     fun lower(irScript: IrScript)
 
