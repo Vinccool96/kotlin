@@ -213,7 +213,7 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
                 configurationJs,
                 libraries,
                 cacheDirectories,
-                IrFactoryImplForJsIC(WholeWorldStageController()),
+                { IrFactoryImplForJsIC(WholeWorldStageController()) },
                 mainCallArguments,
                 ::buildCacheForModuleFiles,
             ) { updateStatus ->
