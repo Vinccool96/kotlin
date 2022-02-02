@@ -135,7 +135,7 @@ private:
     RepeatedTimer timer_;
 };
 
-#endif  // !KONAN_NO_THREADS
+#endif // !KONAN_NO_THREADS
 
 class GCSchedulerDataOnSafepoints : public gc::GCSchedulerData {
 public:

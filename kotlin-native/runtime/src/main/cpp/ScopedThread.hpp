@@ -7,9 +7,8 @@
 
 #ifndef KONAN_NO_THREADS
 
-#include <condition_variable>
 #include <functional>
-#include <mutex>
+#include <optional>
 #include <string_view>
 #include <thread>
 
@@ -30,6 +29,7 @@ public:
     using id = std::thread::id;
     using native_handle_type = std::thread::native_handle_type;
 
+    // There's no guarantee when and if these attributes will be applied. Use them as hints.
     class attributes {
     public:
         attributes() noexcept = default;
@@ -46,7 +46,7 @@ public:
 
     private:
         friend class ScopedThread;
-        std::string_view name_;
+        std::optional<KStdString> name_;
     };
 
     ScopedThread() noexcept = default;
@@ -59,11 +59,7 @@ public:
 
     template <typename F, typename... Args>
     explicit ScopedThread(const attributes& attr, F&& f, Args&&... args) :
-        initialized_(make_unique<Initialized>()),
-        thread_(&ScopedThread::Run<F, Args...>, initialized_.get(), attr, std::forward<F>(f), std::forward<Args>(args)...) {
-        std::unique_lock guard(initialized_->mutex);
-        initialized_->condVar.wait(guard, [this] { return initialized_->value; });
-    }
+        thread_(&ScopedThread::Run<F, Args...>, attr, std::forward<F>(f), std::forward<Args>(args)...) {}
 
     ScopedThread(ScopedThread&& rhs) noexcept = default;
     ScopedThread& operator=(ScopedThread&& rhs) noexcept = default;
@@ -89,26 +85,13 @@ public:
     void detach() { thread_.detach(); }
 
 private:
-    struct Initialized {
-        std::mutex mutex;
-        std::condition_variable condVar;
-        bool value = false;
-    };
-
     template <typename F, typename... Args>
-    static std::invoke_result_t<F, Args...> Run(Initialized* initialized, attributes attr, F&& f, Args&&... args) {
-        if (!attr.name_.empty()) {
-            internal::setCurrentThreadName(attr.name_);
+    static std::invoke_result_t<F, Args...> Run(attributes attr, F&& f, Args&&... args) {
+        if (attr.name_) {
+            internal::setCurrentThreadName(*attr.name_);
         }
-        {
-            std::unique_lock guard(initialized->mutex);
-            initialized->value = true;
-        }
-        initialized->condVar.notify_all();
         return std::invoke(std::forward<F>(f), std::forward<Args>(args)...);
     }
-
-    KStdUniquePtr<Initialized> initialized_;
 
     std::thread thread_;
 };

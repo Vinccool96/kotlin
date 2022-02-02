@@ -7,8 +7,11 @@
 
 #include "ScopedThread.hpp"
 
+#include <cstring>
 #include <pthread.h>
 #include <type_traits>
+
+#include "Logging.hpp"
 
 using namespace kotlin;
 
@@ -18,7 +21,11 @@ void internal::setCurrentThreadName(std::string_view name) noexcept {
     pthread_setname_np(name.data());
 #else
     static_assert(std::is_invocable_r_v<int, decltype(pthread_setname_np), pthread_t, const char*>, "Invalid pthread_setname_np signature");
-    pthread_setname_np(pthread_self(), name.data());
+    // TODO: On Linux the maximum thread name is 16 characters. Handle automatically?
+    int result = pthread_setname_np(pthread_self(), name.data());
+    if (result != 0) {
+        RuntimeLogWarning({"rt"}, "Failed to set thread name: %s", std::strerror(result));
+    }
 #endif
 }
 

@@ -6,6 +6,8 @@
 #include "ScopedThread.hpp"
 
 #include <array>
+#include <atomic>
+#include <cstring>
 #include <pthread.h>
 #include <type_traits>
 
@@ -25,7 +27,7 @@ std::string threadName(pthread_t thread) {
             std::is_invocable_r_v<int, decltype(pthread_getname_np), pthread_t, char*, size_t>, "Invalid pthread_getname_np signature");
     std::array<char, NAME_SIZE> name;
     int result = pthread_getname_np(thread, name.data(), name.size());
-    RuntimeAssert(result == 0, "Failed to get thread name error: %d\n", result);
+    RuntimeAssert(result == 0, "failed to get thread name: %s\n", std::strerror(result));
     // Make sure name is null-terminated.
     name[name.size() - 1] = '\0';
     return std::string(name.data());
@@ -44,21 +46,21 @@ __attribute__((format(printf, 1, 2))) std::string format(const char* format, ...
 } // namespace
 
 TEST(ScopedThreadTest, Default) {
-    ScopedThread thread([] { EXPECT_THAT(threadName(pthread_self()), ""); });
-    EXPECT_THAT(threadName(thread.native_handle()), "");
+    // Do not check name by default, since the default may be set by the system.
+    ScopedThread thread([] {});
 }
 
 TEST(ScopedThreadTest, ThreadName) {
-    ScopedThread thread(ScopedThread::attributes().name("thread name for test"), [] {
-        EXPECT_THAT(threadName(pthread_self()), "thread name for test");
-    });
-    EXPECT_THAT(threadName(thread.native_handle()), "thread name for test");
+    ScopedThread thread(ScopedThread::attributes().name("some thread"), [] { EXPECT_THAT(threadName(pthread_self()), "some thread"); });
 }
 
 TEST(ScopedThreadTest, DynamicThreadName) {
     ScopedThread thread(
             ScopedThread::attributes().name(format("thread %d", 42)), [] { EXPECT_THAT(threadName(pthread_self()), "thread 42"); });
-    EXPECT_THAT(threadName(thread.native_handle()), "thread 42");
+}
+
+TEST(ScopedThreadTest, EmptyThreadName) {
+    ScopedThread thread(ScopedThread::attributes().name(""), [] { EXPECT_THAT(threadName(pthread_self()), ""); });
 }
 
 TEST(ScopedThreadTest, JoinsInDestructor) {
