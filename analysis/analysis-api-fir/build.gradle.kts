@@ -18,6 +18,7 @@ dependencies {
     api(project(":analysis:analysis-api"))
     api(project(":analysis:analysis-api-impl-base"))
     api(project(":compiler:light-classes"))
+    api(project(":analysis:symbol-light-classes"))
     api(intellijCore())
     implementation(project(":analysis:analysis-api-providers"))
     implementation(project(":analysis:analysis-internal-utils"))
@@ -36,7 +37,6 @@ dependencies {
 
     testApi(toolsJar())
     testApiJUnit5()
-    testApi(project(":analysis:symbol-light-classes"))
 }
 
 sourceSets {

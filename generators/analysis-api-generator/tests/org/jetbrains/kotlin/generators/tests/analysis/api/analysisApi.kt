@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.analysis.api.fir.components.importOptimizer.Abstract
 import org.jetbrains.kotlin.analysis.api.fir.components.psiTypeProvider.AbstractExpressionPsiTypeProviderTest
 import org.jetbrains.kotlin.analysis.api.fir.components.psiTypeProvider.AbstractPsiTypeProviderTest
 import org.jetbrains.kotlin.analysis.api.fir.components.typeProvider.AbstractFirGetSuperTypesTest
+import org.jetbrains.kotlin.analysis.api.fir.utils.AbstractStandaloneModeUtilsSingleModuleTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.AbstractReferenceResolveTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.annotations.AbstractAnalysisApiAnnotationsOnDeclarationsTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.annotations.AbstractAnalysisApiAnnotationsOnFilesTest
@@ -42,7 +43,6 @@ import org.jetbrains.kotlin.generators.tests.analysis.api.dsl.component
 import org.jetbrains.kotlin.generators.tests.analysis.api.dsl.group
 import org.jetbrains.kotlin.generators.tests.analysis.api.dsl.test
 import org.jetbrains.kotlin.generators.util.TestGeneratorUtil
-import java.nio.file.Paths
 
 fun TestGroupSuite.generateAnalysisApiTests() {
     generateAnalysisApiComponentsTests()
@@ -92,6 +92,18 @@ private fun TestGroupSuite.generateAnalysisApiNonComponentsTests() {
             generateFe10 = false,
         ) {
             model("delegatedMemberScope")
+        }
+    }
+
+    group(
+        "standalone",
+        testModuleKinds = listOf(TestModuleKind.STANDALONE_MODE),
+    ) {
+        test(
+            AbstractStandaloneModeUtilsSingleModuleTest::class,
+            generateFe10 = false,
+        ) {
+            model("singleModule")
         }
     }
 
