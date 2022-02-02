@@ -678,7 +678,7 @@ internal class KtFirCallResolver(
         firSymbolBuilder.variableLikeBuilder.buildValueParameterSymbol(this)
 
     // TODO: Refactor common code with resolveCall()
-    override fun resolveCandidates(psi: KtElement): List<KtCallInfo> = withValidityAssertion {
+    override fun collectCallCandidates(psi: KtElement): List<KtCallInfo> = withValidityAssertion {
         if (psi.isNotResolvable()) return emptyList()
 
         val containingCallExpressionForCalleeExpression = psi.getContainingCallExpressionForCalleeExpression()
@@ -690,7 +690,7 @@ internal class KtFirCallResolver(
             ?: containingUnaryExpressionForIncOrDec
             ?: psi
         val fir = psiToResolve.getOrBuildFir(analysisSession.firResolveState) ?: return emptyList()
-        fir.resolveCandidates(
+        fir.collectCallCandidates(
             psiToResolve,
             resolveCalleeExpressionOfFunctionCall = psiToResolve == containingCallExpressionForCalleeExpression,
             resolveFragmentOfCall = psiToResolve == containingBinaryExpressionForLhs || psiToResolve == containingUnaryExpressionForIncOrDec
@@ -698,7 +698,7 @@ internal class KtFirCallResolver(
     }
 
     // TODO: Refactor common code with FirElement.toKtCallInfo()
-    private fun FirElement.resolveCandidates(
+    private fun FirElement.collectCallCandidates(
         psi: KtElement,
         resolveCalleeExpressionOfFunctionCall: Boolean,
         resolveFragmentOfCall: Boolean,
@@ -714,7 +714,7 @@ internal class KtFirCallResolver(
             //       // This way `f` is also the explicit receiver of this implicit `invoke` call
             // }
             // ```
-            return explicitReceiver?.resolveCandidates(
+            return explicitReceiver?.collectCallCandidates(
                 psi,
                 resolveCalleeExpressionOfFunctionCall = false,
                 resolveFragmentOfCall = resolveFragmentOfCall
@@ -725,7 +725,7 @@ internal class KtFirCallResolver(
                 val firFile = psi.containingKtFile.getOrBuildFirFile(firResolveState)
                 AllCandidatesResolver(analysisSession.rootModuleSession, firFile).getAllCandidates(this, psi, resolveFragmentOfCall)
             }
-            is FirSafeCallExpression -> regularQualifiedAccess.resolveCandidates(
+            is FirSafeCallExpression -> regularQualifiedAccess.collectCallCandidates(
                 psi,
                 resolveCalleeExpressionOfFunctionCall,
                 resolveFragmentOfCall
